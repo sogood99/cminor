@@ -1,0 +1,20 @@
+{
+	"Abs-soln.c": "VERIFIED",
+	"Abs-termination.c": "VERIFIED",
+	"BubbleSort-soln.c": "VERIFIED",
+	"fib.c": "VERIFIED",
+	"fun.c": "VERIFIED",
+	"infinite_descending_ranking_function.c": "UNVERIFIED",
+	"infinite_partial_correctness.c": "UNVERIFIED",
+	"InsertionSort-soln.c": "VERIFIED",
+	"length_and_termination.c": "VERIFIED",
+	"LinearSearch-soln.c": "VERIFIED",
+	"Max-soln.c": "VERIFIED",
+	"negative_ranking_function.c": "UNVERIFIED",
+	"QuickSort-soln.c": "VERIFIED",
+	"SortedUnion-soln.c": "VERIFIED",
+	"sum.c": "VERIFIED",
+	"termination_example.c": "VERIFIED",
+	"trivial.c": "VERIFIED",
+	"UnsortedUnion-soln.c": "VERIFIED"
+}

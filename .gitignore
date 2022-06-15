@@ -372,3 +372,5 @@ Properties/
 
 # Binary of C++
 *.out
+
+api-doc/*

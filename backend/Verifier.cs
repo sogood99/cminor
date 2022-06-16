@@ -86,27 +86,43 @@ namespace cminor
                         if (succBlk is BasicBlock)
                         {
                             newPath.AddLast(succBlk);
-                            // add back
                             basicPaths.AddLast(newPath);
                         }
                         else if (succBlk is LoopHeadBlock)
                         {
                             newPath.AddLast(succBlk);
-                            // check newPath
-                            PrintBasicPath(newPath);
 
                             if (!accessed.Contains(succBlk))
                             {
-                                // meeting loop for first time
+                                // meeting loop for first time, ccreate new path starting from lh
                                 basicPaths.AddLast(new BasicPath(new Block[] { succBlk }));
                             }
                         }
                         else if (succBlk is PostconditionBlock)
                         {
                             newPath.AddLast(succBlk);
-                            // check newPath
-                            PrintBasicPath(newPath);
                         }
+                        else
+                        {
+                            // bug, unknown block type
+                            throw new System.Exception("Bug, Unknown block type");
+                        }
+
+                        if (succBlk is LoopHeadBlock || succBlk is PostconditionBlock)
+                        {
+                            // forms a complete basic path, check
+                            int retVal = checkBasicPath(newPath);
+                            switch (retVal)
+                            {
+                                case int n when (n == 0):
+                                    return 0;
+                                case int n when (n < 0):
+                                    return -1;
+                                default:
+                                    break;
+                            }
+                        }
+
                         accessed.Add(succBlk);
                     }
                 }
@@ -114,9 +130,13 @@ namespace cminor
             return 1;
         }
 
+        private int checkBasicPath(BasicPath p)
+        {
+            PrintBasicPath(p);
+            return 1;
+        }
 
         // debugging 
-
         private void PrintBasicPath(BasicPath p)
         {
             writer.WriteLine("Basic Path Start");

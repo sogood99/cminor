@@ -45,6 +45,11 @@ namespace cminor
         /// </list>
         public int Apply(IRMain cfg)
         {
+            foreach (Predicate p in cfg.predicates)
+            {
+                solver.definePredicate(p);
+            }
+
             foreach (Function f in cfg.functions)
             {
                 int retVal = checkedFunc(f);

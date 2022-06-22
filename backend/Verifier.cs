@@ -275,9 +275,17 @@ namespace cminor
 
                         if (sFuncCall.lhs != null)
                         {
+                            Expression functionPostcondition = getPostCondition(sFuncCall.rhs.function.postconditionBlock);
+
+                            // substitute in args for parameters
+                            for (int j = 0; j < argParams.Count; j++)
+                            {
+                                // substitute in argument params for function params
+                                VariableExpression arg = new VariableExpression(argParams[j]);
+                                functionPostcondition = functionPostcondition.Substitute(funcParams[j], arg);
+                            }
                             // substitute in lhs for rv
                             List<LocalVariable> funcRvs = sFuncCall.rhs.function.rvs;
-                            Expression functionPostcondition = getPostCondition(sFuncCall.rhs.function.postconditionBlock);
                             for (int j = 0; j < sFuncCall.lhs.Count; j++)
                             {
                                 VariableExpression lrv = new VariableExpression(sFuncCall.lhs[j]);
@@ -375,15 +383,19 @@ namespace cminor
         }
         private void PrintBasicPath(BasicPath p)
         {
+            writer.WriteLine("");
             writer.WriteLine("Basic Path Start");
 
             p.precondition.Print(writer);
+            writer.WriteLine("");
             foreach (Statement s in p.statements)
             {
                 s.Print(writer);
+                writer.WriteLine("");
             }
             p.postcondition.Print(writer);
 
+            writer.WriteLine("");
             writer.WriteLine("Basic Path Ends");
         }
     }

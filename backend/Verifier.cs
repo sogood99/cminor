@@ -226,9 +226,8 @@ namespace cminor
             }
 
             LinkedListNode<Block> b = bbp.First;
-            for (int i = 1; i < bbp.Count - 1; i++)
+            for (int i = 0; i < bbp.Count; i++)
             {
-                b = b.Next;
                 foreach (Statement s in b.Value.statements)
                 {
                     if (s is AssertStatement)
@@ -291,6 +290,7 @@ namespace cminor
                         bp.statements.AddLast(s);
                     }
                 }
+                b = b.Next;
             }
 
 

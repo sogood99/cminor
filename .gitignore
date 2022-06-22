@@ -374,3 +374,5 @@ Properties/
 *.out
 
 api-doc/*
+
+venv

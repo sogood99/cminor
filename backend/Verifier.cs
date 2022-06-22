@@ -232,7 +232,7 @@ namespace cminor
                         {
                             // substitute in argument params for function params
                             VariableExpression arg = new VariableExpression(argParams[j]);
-                            functionPrecondition.Substitute(funcParams[j], arg);
+                            functionPrecondition = functionPrecondition.Substitute(funcParams[j], arg);
                         }
                         BasicPath newBp = new BasicPath(bp);
                         newBp.postcondition = functionPrecondition;
@@ -247,7 +247,7 @@ namespace cminor
                             for (int j = 0; j < sFuncCall.lhs.Count; j++)
                             {
                                 VariableExpression lrv = new VariableExpression(sFuncCall.lhs[j]);
-                                functionPostcondition.Substitute(funcRvs[j], lrv);
+                                functionPostcondition = functionPostcondition.Substitute(funcRvs[j], lrv);
                             }
                             // set assume statement given by function return
                             AssumeStatement functionRetAssume = new AssumeStatement();

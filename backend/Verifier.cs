@@ -188,10 +188,10 @@ namespace cminor
                 return new BoolConstantExpression(true);
             }
 
-            Expression psi = new BoolConstantExpression(false);
+            Expression psi = new BoolConstantExpression(true);
             foreach (Expression e in b.conditions)
             {
-                psi = new OrExpression(psi, e);
+                psi = new AndExpression(psi, e);
             }
             return psi;
         }

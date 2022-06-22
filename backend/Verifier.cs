@@ -7,7 +7,22 @@ using System.Collections.Generic;
 
 namespace cminor
 {
-    using BasicPath = LinkedList<Block>;
+    using BasicBlockPath = LinkedList<Block>;
+    class BasicPath
+    {
+        public Expression precondition = default!;
+        public LinkedList<Statement> statements = new LinkedList<Statement>();
+        public Expression postcondition = default!;
+
+        public BasicPath() { }
+        public BasicPath(BasicPath basicPath)
+        {
+            // do a deep copy for statements
+            precondition = basicPath.precondition;
+            postcondition = basicPath.postcondition;
+            statements = new LinkedList<Statement>(basicPath.statements);
+        }
+    }
 
     /// <summary> 一个验证器，接受一个中间表示，判断其是否有效。 </summary>
     class Verifier
@@ -45,7 +60,7 @@ namespace cminor
             return 1;
         }
 
-        // returns true if function passes check
+        // returns -1,0,1 similar to Apply
         private int checkedFunc(Function f)
         {
             if (f.blocks.Count == 0)
@@ -53,10 +68,10 @@ namespace cminor
                 return 0;
             }
             HashSet<Block> accessed = new HashSet<Block>(); // check if a block has been accessed
-            LinkedList<BasicPath> basicPaths = new LinkedList<BasicPath>(); // all basic paths used in bfs
+            LinkedList<BasicBlockPath> basicPaths = new LinkedList<BasicBlockPath>(); // all basic paths used in bfs
 
             // init basicPaths
-            basicPaths.AddLast(new BasicPath(new Block[] { f.preconditionBlock }));
+            basicPaths.AddLast(new BasicBlockPath(new Block[] { f.preconditionBlock }));
             // init accessed
             accessed.Add(f.preconditionBlock);
 
@@ -71,7 +86,7 @@ namespace cminor
                         throw new System.Exception("Bug, number of basicPaths should have count > Count");
                     }
 
-                    BasicPath p = basicPaths.First.Value;
+                    BasicBlockPath p = basicPaths.First.Value;
                     basicPaths.RemoveFirst();
 
                     if (p.Last is null)
@@ -82,7 +97,7 @@ namespace cminor
 
                     foreach (Block succBlk in p.Last.Value.successors)
                     {
-                        BasicPath newPath = new BasicPath(p);
+                        BasicBlockPath newPath = new BasicBlockPath(p);
                         if (succBlk is BasicBlock)
                         {
                             newPath.AddLast(succBlk);
@@ -95,7 +110,7 @@ namespace cminor
                             if (!accessed.Contains(succBlk))
                             {
                                 // meeting loop for first time, ccreate new path starting from lh
-                                basicPaths.AddLast(new BasicPath(new Block[] { succBlk }));
+                                basicPaths.AddLast(new BasicBlockPath(new Block[] { succBlk }));
                             }
                         }
                         else if (succBlk is PostconditionBlock)
@@ -111,7 +126,7 @@ namespace cminor
                         if (succBlk is LoopHeadBlock || succBlk is PostconditionBlock)
                         {
                             // forms a complete basic path, check
-                            int retVal = checkBasicPath(newPath);
+                            int retVal = checkBasicBlockPath(newPath);
                             switch (retVal)
                             {
                                 case int n when (n == 0):
@@ -130,61 +145,220 @@ namespace cminor
             return 1;
         }
 
-        private int checkBasicPath(BasicPath p)
+        private Expression getPrecondition(PreconditionBlock b)
+        {
+            Expression phi = new BoolConstantExpression(true);
+            foreach (Expression e in b.conditions)
+            {
+                phi = new AndExpression(phi, e);
+            }
+            return phi;
+        }
+        private Expression getPrecondition(LoopHeadBlock b)
+        {
+            Expression phi = new BoolConstantExpression(true);
+            foreach (Expression e in b.invariants)
+            {
+                phi = new AndExpression(phi, e);
+            }
+            return phi;
+        }
+        private Expression getPostCondition(PostconditionBlock b)
+        {
+            Expression psi = new BoolConstantExpression(false);
+            foreach (Expression e in b.conditions)
+            {
+                psi = new OrExpression(psi, e);
+            }
+            return psi;
+        }
+        private Expression getPostCondition(LoopHeadBlock b)
         {
             Expression psi = new BoolConstantExpression(true);
-            LinkedListNode<Block> b = p.Last;
-            foreach (Expression e in (b.Value as PostconditionBlock).conditions)
+            foreach (Expression e in b.invariants)
             {
                 psi = new AndExpression(psi, e);
             }
+            return psi;
+        }
 
-            for (int i = 0; i < p.Count - 2; i++)
+
+        private int checkBasicBlockPath(BasicBlockPath bbp)
+        {
+            PrintBasicBlockPath(bbp);
+
+            BasicPath bp = new BasicPath();
+            if (bbp.First.Value is PreconditionBlock)
             {
-                b = b.Previous;
+                bp.precondition = getPrecondition(bbp.First.Value as PreconditionBlock);
+            }
+            else if (bbp.First.Value is LoopHeadBlock)
+            {
+                bp.precondition = getPrecondition(bbp.First.Value as LoopHeadBlock);
+            }
+            else
+            {
+                throw new System.Exception("First that is not Precondition nor LoopHead");
+            }
+
+            LinkedListNode<Block> b = bbp.First;
+            for (int i = 1; i < bbp.Count - 1; i++)
+            {
+                b = b.Next;
                 foreach (Statement s in b.Value.statements)
                 {
-                    if (s is AssumeStatement)
+                    if (s is AssertStatement)
                     {
-                        AssumeStatement sAssume = s as AssumeStatement;
-                        psi = new ImplicationExpression(sAssume.condition, psi);
+                        AssertStatement sAssert = s as AssertStatement;
+                        BasicPath newBp = new BasicPath(bp);
+                        newBp.postcondition = sAssert.pred;
+
+                        checkBasicPath(newBp);
+
+                        // assume statement from assert
+                        AssumeStatement sAssume = new AssumeStatement();
+                        sAssume.condition = sAssert.pred;
+
+                        bp.statements.AddLast(sAssume);
                     }
-                    else if (s is VariableAssignStatement)
+                    else if (s is FunctionCallStatement)
                     {
-                        VariableAssignStatement sAssign = s as VariableAssignStatement;
-                        psi = psi.Substitute(sAssign.variable, sAssign.rhs);
+                        FunctionCallStatement sFuncCall = s as FunctionCallStatement;
+                        // generate new assert condition
+                        Expression functionPrecondition = getPrecondition(sFuncCall.rhs.function.preconditionBlock);
+                        List<LocalVariable> funcParams = sFuncCall.rhs.function.parameters;
+                        List<LocalVariable> argParams = sFuncCall.rhs.argumentVariables;
+                        for (int j = 0; j < argParams.Count; j++)
+                        {
+                            // substitute in argument params for function params
+                            VariableExpression arg = new VariableExpression(argParams[j]);
+                            functionPrecondition.Substitute(funcParams[j], arg);
+                        }
+                        BasicPath newBp = new BasicPath(bp);
+                        newBp.postcondition = functionPrecondition;
+
+                        checkBasicPath(newBp);
+
+                        if (sFuncCall.lhs != null)
+                        {
+                            // substitute in lhs for rv
+                            List<LocalVariable> funcRvs = sFuncCall.rhs.function.rvs;
+                            Expression functionPostcondition = getPostCondition(sFuncCall.rhs.function.postconditionBlock);
+                            for (int j = 0; j < sFuncCall.lhs.Count; j++)
+                            {
+                                VariableExpression lrv = new VariableExpression(sFuncCall.lhs[j]);
+                                functionPostcondition.Substitute(funcRvs[j], lrv);
+                            }
+                            // set assume statement given by function return
+                            AssumeStatement functionRetAssume = new AssumeStatement();
+                            functionRetAssume.condition = functionPostcondition;
+                            bp.statements.AddLast(functionRetAssume);
+                        }
+                    }
+                    else
+                    {
+                        // other statements are not special
+                        bp.statements.AddLast(s);
                     }
                 }
             }
 
-            Expression phi = new BoolConstantExpression(false);
-            b = p.First;
-            foreach (Expression e in (b.Value as PreconditionBlock).conditions)
+
+            if (bbp.Last.Value is PostconditionBlock)
             {
-                phi = new OrExpression(phi, e);
+                bp.postcondition = getPostCondition(bbp.Last.Value as PostconditionBlock);
+            }
+            else if (bbp.Last.Value is LoopHeadBlock)
+            {
+                bp.postcondition = getPostCondition(bbp.Last.Value as LoopHeadBlock);
+            }
+            else
+            {
+                throw new System.Exception("Last that is not Lostcondition nor LoopHead");
             }
 
-            ImplicationExpression check = new ImplicationExpression(phi, psi);
-            CounterModel c = solver.CheckValid(check);
+            checkBasicPath(bp);
 
-            if (c == null)
-            {
-                return 1;
-            }
-            return -1;
+            return 1;
+        }
+
+        private int checkBasicPath(BasicPath p)
+        {
+            PrintBasicPath(p);
+            // PrintBasicPath(p);
+            // Expression psi = new BoolConstantExpression(true);
+            // LinkedListNode<Block> b = p.Last;
+            // if (b.Value is PostconditionBlock)
+            // {
+            //     foreach (Expression e in (b.Value as PostconditionBlock).conditions)
+            //     {
+            //         psi = new AndExpression(psi, e);
+            //     }
+            // }
+            // else
+            // {
+
+            // }
+
+            // for (int i = 0; i < p.Count - 2; i++)
+            // {
+            //     b = b.Previous;
+            //     foreach (Statement s in b.Value.statements)
+            //     {
+            //         if (s is AssumeStatement)
+            //         {
+            //             AssumeStatement sAssume = s as AssumeStatement;
+            //             psi = new ImplicationExpression(sAssume.condition, psi);
+            //         }
+            //         else if (s is VariableAssignStatement)
+            //         {
+            //             VariableAssignStatement sAssign = s as VariableAssignStatement;
+            //             psi = psi.Substitute(sAssign.variable, sAssign.rhs);
+            //         }
+            //     }
+            // }
+
+            // Expression phi = new BoolConstantExpression(false);
+            // b = p.First;
+            // foreach (Expression e in (b.Value as PreconditionBlock).conditions)
+            // {
+            //     phi = new OrExpression(phi, e);
+            // }
+
+            // ImplicationExpression check = new ImplicationExpression(phi, psi);
+            // CounterModel c = solver.CheckValid(check);
+
+            // if (c == null)
+            // {
+            //     return 1;
+            // }
+            return 1;
         }
 
         // debugging 
-        private void PrintBasicPath(BasicPath p)
+        private void PrintBasicBlockPath(BasicBlockPath p)
         {
-            writer.WriteLine("Basic Path Start");
+            writer.WriteLine("Basic Block Path Start");
 
             foreach (Block b in p)
             {
                 b.Print(writer);
             }
 
-            writer.WriteLine("Basic Path End");
+            writer.WriteLine("Basic Block Path End");
+        }
+        private void PrintBasicPath(BasicPath p)
+        {
+            writer.WriteLine("Basic Path Start");
+
+            p.precondition.Print(writer);
+            foreach (Statement s in p.statements)
+            {
+                s.Print(writer);
+            }
+            p.postcondition.Print(writer);
+
+            writer.WriteLine("Basic Path Ends");
         }
     }
 }

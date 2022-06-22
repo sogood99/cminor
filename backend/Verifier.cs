@@ -147,6 +147,12 @@ namespace cminor
 
         private Expression getPrecondition(PreconditionBlock b)
         {
+            if (b.conditions.Count == 0)
+            {
+                // no conditions implies allow nothing
+                return new BoolConstantExpression(false);
+            }
+
             Expression phi = new BoolConstantExpression(true);
             foreach (Expression e in b.conditions)
             {
@@ -156,6 +162,12 @@ namespace cminor
         }
         private Expression getPrecondition(LoopHeadBlock b)
         {
+            if (b.invariants.Count == 0)
+            {
+                // no conditions implies allow nothing
+                return new BoolConstantExpression(false);
+            }
+
             Expression phi = new BoolConstantExpression(true);
             foreach (Expression e in b.invariants)
             {
@@ -165,6 +177,12 @@ namespace cminor
         }
         private Expression getPostCondition(PostconditionBlock b)
         {
+            if (b.conditions.Count == 0)
+            {
+                // no conditions implies output allow everything
+                return new BoolConstantExpression(true);
+            }
+
             Expression psi = new BoolConstantExpression(false);
             foreach (Expression e in b.conditions)
             {
@@ -174,6 +192,12 @@ namespace cminor
         }
         private Expression getPostCondition(LoopHeadBlock b)
         {
+            if (b.invariants == null)
+            {
+                // no conditions implies output allow everything
+                return new BoolConstantExpression(true);
+            }
+
             Expression psi = new BoolConstantExpression(true);
             foreach (Expression e in b.invariants)
             {
@@ -213,7 +237,10 @@ namespace cminor
                         BasicPath newBp = new BasicPath(bp);
                         newBp.postcondition = sAssert.pred;
 
-                        checkBasicPath(newBp);
+                        if (checkBasicPath(newBp) < 0)
+                        {
+                            return -1;
+                        }
 
                         // assume statement from assert
                         AssumeStatement sAssume = new AssumeStatement();
@@ -237,7 +264,10 @@ namespace cminor
                         BasicPath newBp = new BasicPath(bp);
                         newBp.postcondition = functionPrecondition;
 
-                        checkBasicPath(newBp);
+                        if (checkBasicPath(newBp) < 0)
+                        {
+                            return -1;
+                        }
 
                         if (sFuncCall.lhs != null)
                         {
@@ -277,62 +307,53 @@ namespace cminor
                 throw new System.Exception("Last that is not Lostcondition nor LoopHead");
             }
 
-            checkBasicPath(bp);
-
-            return 1;
+            return checkBasicPath(bp);
         }
 
-        private int checkBasicPath(BasicPath p)
+        private int checkBasicPath(BasicPath basicPath)
         {
-            PrintBasicPath(p);
-            // PrintBasicPath(p);
-            // Expression psi = new BoolConstantExpression(true);
-            // LinkedListNode<Block> b = p.Last;
-            // if (b.Value is PostconditionBlock)
-            // {
-            //     foreach (Expression e in (b.Value as PostconditionBlock).conditions)
-            //     {
-            //         psi = new AndExpression(psi, e);
-            //     }
-            // }
-            // else
-            // {
+            PrintBasicPath(basicPath);
+            Expression psi = basicPath.postcondition;
 
-            // }
+            LinkedListNode<Statement> s = basicPath.statements.Last;
+            for (int i = 0; i < basicPath.statements.Count; i++)
+            {
+                Statement stmt = s.Value;
+                if (stmt is AssumeStatement)
+                {
+                    AssumeStatement stmtAssume = stmt as AssumeStatement;
+                    psi = new ImplicationExpression(stmtAssume.condition, psi);
+                }
+                else if (stmt is VariableAssignStatement)
+                {
+                    VariableAssignStatement stmtAssign = stmt as VariableAssignStatement;
+                    psi = psi.Substitute(stmtAssign.variable, stmtAssign.rhs);
+                }
+                else if (stmt is SubscriptAssignStatement)
+                {
+                    SubscriptAssignStatement stmtSubAssign = stmt as SubscriptAssignStatement;
+                    ArrayVariable array = stmtSubAssign.array;
 
-            // for (int i = 0; i < p.Count - 2; i++)
-            // {
-            //     b = b.Previous;
-            //     foreach (Statement s in b.Value.statements)
-            //     {
-            //         if (s is AssumeStatement)
-            //         {
-            //             AssumeStatement sAssume = s as AssumeStatement;
-            //             psi = new ImplicationExpression(sAssume.condition, psi);
-            //         }
-            //         else if (s is VariableAssignStatement)
-            //         {
-            //             VariableAssignStatement sAssign = s as VariableAssignStatement;
-            //             psi = psi.Substitute(sAssign.variable, sAssign.rhs);
-            //         }
-            //     }
-            // }
+                    // cast the localVariables to expression
+                    VariableExpression arrayExpr = new VariableExpression(array);
+                    VariableExpression arrayLengthExpr = new VariableExpression(array.length);
 
-            // Expression phi = new BoolConstantExpression(false);
-            // b = p.First;
-            // foreach (Expression e in (b.Value as PreconditionBlock).conditions)
-            // {
-            //     phi = new OrExpression(phi, e);
-            // }
+                    ArrayUpdateExpression arrayToUpdatedArray = new ArrayUpdateExpression(arrayExpr, stmtSubAssign.subscript, stmtSubAssign.rhs, arrayLengthExpr);
+                    psi = psi.Substitute(array, arrayToUpdatedArray);
+                }
 
-            // ImplicationExpression check = new ImplicationExpression(phi, psi);
-            // CounterModel c = solver.CheckValid(check);
+                s = s.Previous;
+            }
 
-            // if (c == null)
-            // {
-            //     return 1;
-            // }
-            return 1;
+            ImplicationExpression check = new ImplicationExpression(basicPath.precondition, psi);
+            CounterModel c = solver.CheckValid(check);
+
+            if (c == null)
+            {
+                return 1;
+            }
+
+            return -1;
         }
 
         // debugging 

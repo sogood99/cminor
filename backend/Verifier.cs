@@ -132,18 +132,58 @@ namespace cminor
 
         private int checkBasicPath(BasicPath p)
         {
-            PrintBasicPath(p);
-            return 1;
+            Expression psi = new BoolConstantExpression(true);
+            LinkedListNode<Block> b = p.Last;
+            foreach (Expression e in (b.Value as PostconditionBlock).conditions)
+            {
+                psi = new AndExpression(psi, e);
+            }
+
+            for (int i = 0; i < p.Count - 2; i++)
+            {
+                b = b.Previous;
+                foreach (Statement s in b.Value.statements)
+                {
+                    if (s is AssumeStatement)
+                    {
+                        AssumeStatement sAssume = s as AssumeStatement;
+                        psi = new ImplicationExpression(sAssume.condition, psi);
+                    }
+                    else if (s is VariableAssignStatement)
+                    {
+                        VariableAssignStatement sAssign = s as VariableAssignStatement;
+                        psi = psi.Substitute(sAssign.variable, sAssign.rhs);
+                    }
+                }
+            }
+
+            Expression phi = new BoolConstantExpression(false);
+            b = p.First;
+            foreach (Expression e in (b.Value as PreconditionBlock).conditions)
+            {
+                phi = new OrExpression(phi, e);
+            }
+
+            ImplicationExpression check = new ImplicationExpression(phi, psi);
+            CounterModel c = solver.CheckValid(check);
+
+            if (c == null)
+            {
+                return 1;
+            }
+            return -1;
         }
 
         // debugging 
         private void PrintBasicPath(BasicPath p)
         {
             writer.WriteLine("Basic Path Start");
+
             foreach (Block b in p)
             {
                 b.Print(writer);
             }
+
             writer.WriteLine("Basic Path End");
         }
     }

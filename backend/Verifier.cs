@@ -508,10 +508,6 @@ namespace cminor
             bp.postcondition = new AndExpression(dictionaryDecreaseExpr, rankingFunctionGEZero);
 
             Expression wlp = wp(bp);
-            writer.WriteLine(subVariable.Count);
-            writer.WriteLine("");
-            wlp.Print(writer);
-            writer.WriteLine("");
 
             // substitute back in
             LinkedListNode<LocalVariable> subVar = subVariable.First;
@@ -534,8 +530,8 @@ namespace cminor
             {
                 return 1;
             }
-
             c.Print(writer);
+            writer.WriteLine();
 
             return -1;
         }

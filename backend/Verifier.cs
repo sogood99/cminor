@@ -11,8 +11,10 @@ namespace cminor
     class BasicPath
     {
         public Expression precondition = default!;
+        public List<Expression> headRankingFunction = default!;
         public LinkedList<Statement> statements = new LinkedList<Statement>();
         public Expression postcondition = default!;
+        public List<Expression> tailRankingFunction = default!;
 
         public BasicPath() { }
         public BasicPath(BasicPath basicPath)
@@ -21,6 +23,14 @@ namespace cminor
             precondition = basicPath.precondition;
             postcondition = basicPath.postcondition;
             statements = new LinkedList<Statement>(basicPath.statements);
+            if (basicPath.headRankingFunction != null)
+            {
+                headRankingFunction = new List<Expression>(basicPath.headRankingFunction);
+            }
+            if (basicPath.tailRankingFunction != null)
+            {
+                tailRankingFunction = new List<Expression>(basicPath.tailRankingFunction);
+            }
         }
     }
 
@@ -320,12 +330,24 @@ namespace cminor
                 throw new System.Exception("Last that is not Lostcondition nor LoopHead");
             }
 
-            return checkBasicPath(bp);
+            if (checkBasicPath(bp) < 0)
+            {
+                return -1;
+            }
+
+            if (bbp.First.Value is HeadBlock && bbp.Last.Value is HeadBlock)
+            {
+                // check 
+                bp.headRankingFunction = (bbp.First.Value as HeadBlock).rankingFunctions;
+                bp.tailRankingFunction = (bbp.Last.Value as HeadBlock).rankingFunctions;
+
+                return checkRankingFunction(bp);
+            }
+            return 1;
         }
 
-        private int checkBasicPath(BasicPath basicPath)
+        private Expression wp(BasicPath basicPath)
         {
-            PrintBasicPath(basicPath);
             Expression psi = basicPath.postcondition;
 
             LinkedListNode<Statement> s = basicPath.statements.Last;
@@ -357,14 +379,107 @@ namespace cminor
 
                 s = s.Previous;
             }
+            return psi;
+        }
 
-            ImplicationExpression check = new ImplicationExpression(basicPath.precondition, psi);
+        private int checkBasicPath(BasicPath basicPath)
+        {
+            PrintBasicPath(basicPath);
+
+            ImplicationExpression check = new ImplicationExpression(basicPath.precondition, wp(basicPath));
             CounterModel c = solver.CheckValid(check);
 
             if (c == null)
             {
                 return 1;
             }
+
+            return -1;
+        }
+
+        private int checkRankingFunction(BasicPath basicPath)
+        {
+            if (basicPath.headRankingFunction == null || basicPath.tailRankingFunction == null)
+            {
+                return 1;
+            }
+
+            BasicPath bp = new BasicPath(basicPath);
+
+            // make sure that k < delta[bar{x}]
+            Expression dictionaryDecreaseExpr = new BoolConstantExpression(false);
+
+            // bar{x} temp variables
+            Dictionary<LocalVariable, LocalVariable> tempVariable = new Dictionary<LocalVariable, LocalVariable>();
+
+            int K = bp.headRankingFunction.Count;
+
+            if (K <= 0)
+            {
+                return 1;
+            }
+
+            for (int i = 0; i < K; i++)
+            {
+                Expression allEqualAndLessThan = new BoolConstantExpression(true);
+                for (int j = 0; j < i; j++)
+                {
+                    HashSet<LocalVariable> freeVariable = new HashSet<LocalVariable>(bp.headRankingFunction[j].GetFreeVariables());
+
+                    foreach (LocalVariable fv in freeVariable)
+                    {
+                        LocalVariable newLocalVar = new LocalVariable();
+                        newLocalVar.name = "temp_variable_name" + i + "_" + j;
+                        newLocalVar.type = fv.type;
+
+                        // add to dictionary
+                        tempVariable.Add(newLocalVar, fv);
+
+                        // substitute local variable
+                        bp.headRankingFunction[j] = bp.headRankingFunction[j].Substitute(fv, new VariableExpression(newLocalVar));
+                    }
+                    if (j < i)
+                    {
+                        allEqualAndLessThan = new AndExpression(allEqualAndLessThan, new EQExpression(bp.tailRankingFunction[j], bp.headRankingFunction[j]));
+                    }
+                    else if (j == i)
+                    {
+                        allEqualAndLessThan = new AndExpression(allEqualAndLessThan, new LTExpression(bp.tailRankingFunction[i], bp.headRankingFunction[i]));
+                    }
+                    else
+                    {
+                        throw new System.Exception("j > i");
+                    }
+
+                }
+
+                dictionaryDecreaseExpr = new OrExpression(dictionaryDecreaseExpr, allEqualAndLessThan);
+            }
+            bp.postcondition = dictionaryDecreaseExpr;
+
+            Expression wlp = wp(bp);
+            // substitute back in
+
+            foreach (KeyValuePair<LocalVariable, LocalVariable> entry in tempVariable)
+            {
+                wlp.Substitute(entry.Key, new VariableExpression(entry.Value));
+            }
+
+
+            // precondition -> wp
+
+            ImplicationExpression check = new ImplicationExpression(bp.precondition, wlp);
+            CounterModel c = solver.CheckValid(check);
+
+            if (c == null)
+            {
+                return 1;
+            }
+
+            writer.WriteLine("***********88");
+            check.Print(writer);
+            c.Print(writer);
+            writer.WriteLine("***********88");
 
             return -1;
         }

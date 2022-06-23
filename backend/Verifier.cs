@@ -11,10 +11,10 @@ namespace cminor
     class BasicPath
     {
         public Expression precondition = default!;
-        public List<Expression> headRankingFunction = default!;
         public LinkedList<Statement> statements = new LinkedList<Statement>();
         public Expression postcondition = default!;
-        public List<Expression> tailRankingFunction = default!;
+        public List<Expression> headRankingFunction = new List<Expression>();
+        public List<Expression> tailRankingFunction = new List<Expression>();
 
         public BasicPath() { }
         public BasicPath(BasicPath basicPath)
@@ -335,15 +335,17 @@ namespace cminor
                 return -1;
             }
 
-            if (bbp.First.Value is HeadBlock && bbp.Last.Value is HeadBlock)
+            // check 
+            if (bbp.First.Value is HeadBlock)
             {
-                // check 
                 bp.headRankingFunction = (bbp.First.Value as HeadBlock).rankingFunctions;
-                bp.tailRankingFunction = (bbp.Last.Value as HeadBlock).rankingFunctions;
-
-                return checkRankingFunction(bp);
             }
-            return 1;
+            if (bbp.Last.Value is HeadBlock)
+            {
+                bp.tailRankingFunction = (bbp.Last.Value as HeadBlock).rankingFunctions;
+            }
+
+            return checkRankingFunction(bp);
         }
 
         private Expression wp(BasicPath basicPath)
@@ -399,25 +401,30 @@ namespace cminor
 
         private int checkRankingFunction(BasicPath basicPath)
         {
-            if (basicPath.headRankingFunction == null || basicPath.tailRankingFunction == null)
-            {
-                return 1;
-            }
-
             BasicPath bp = new BasicPath(basicPath);
 
             // make sure that k < delta[bar{x}]
-            Expression dictionaryDecreaseExpr = new BoolConstantExpression(false);
+            Expression dictionaryDecreaseExpr = new BoolConstantExpression(true);
             Expression rankingFunctionGEZero = new BoolConstantExpression(true);
 
             // bar{x} temp variables
             Dictionary<LocalVariable, LocalVariable> tempVariable = new Dictionary<LocalVariable, LocalVariable>();
 
-            int K = bp.headRankingFunction.Count;
-
-            if (K <= 0)
+            foreach (Expression rankFun in bp.headRankingFunction)
             {
-                return 1;
+                rankingFunctionGEZero = new AndExpression(rankingFunctionGEZero, new GEExpression(rankFun, new IntConstantExpression(0)));
+            }
+            foreach (Expression rankFun in bp.tailRankingFunction)
+            {
+                rankingFunctionGEZero = new AndExpression(rankingFunctionGEZero, new GEExpression(rankFun, new IntConstantExpression(0)));
+            }
+
+            int K = 0;
+
+            if (bp.headRankingFunction.Count == bp.tailRankingFunction.Count && bp.headRankingFunction.Count != 0)
+            {
+                K = bp.headRankingFunction.Count;
+                dictionaryDecreaseExpr = new BoolConstantExpression(false);
             }
 
             for (int i = 0; i < K; i++)
@@ -446,8 +453,6 @@ namespace cminor
                     else if (j == i)
                     {
                         allEqualAndLessThan = new AndExpression(allEqualAndLessThan, new LTExpression(bp.tailRankingFunction[i], bp.headRankingFunction[i]));
-
-                        rankingFunctionGEZero = new AndExpression(rankingFunctionGEZero, new GEExpression(bp.tailRankingFunction[i], new IntConstantExpression(0)));
                     }
                     else
                     {
@@ -476,11 +481,6 @@ namespace cminor
             {
                 return 1;
             }
-
-            writer.WriteLine("***********88");
-            check.Print(writer);
-            c.Print(writer);
-            writer.WriteLine("***********88");
 
             return -1;
         }

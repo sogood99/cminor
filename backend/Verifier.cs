@@ -1,7 +1,3 @@
-/*
-    TODO: 这是你唯一允许编辑的文件，你可以对此文件作任意的修改，只要整个项目可以正常地跑起来。
-*/
-
 using System.IO;
 using System.Collections.Generic;
 

@@ -395,6 +395,8 @@ namespace cminor
             {
                 return 1;
             }
+            c.Print(writer);
+            writer.WriteLine("");
 
             return -1;
         }
@@ -408,7 +410,8 @@ namespace cminor
             Expression rankingFunctionGEZero = new BoolConstantExpression(true);
 
             // bar{x} temp variables
-            Dictionary<LocalVariable, LocalVariable> tempVariable = new Dictionary<LocalVariable, LocalVariable>();
+            LinkedList<LocalVariable> subVariable = new LinkedList<LocalVariable>();
+            LinkedList<LocalVariable> tempVariable = new LinkedList<LocalVariable>();
 
             foreach (Expression rankFun in bp.headRankingFunction)
             {
@@ -436,12 +439,15 @@ namespace cminor
 
                     foreach (LocalVariable fv in freeVariable)
                     {
-                        LocalVariable newLocalVar = new LocalVariable();
-                        newLocalVar.name = "temp_variable_name" + i + "_" + j;
-                        newLocalVar.type = fv.type;
+                        LocalVariable newLocalVar = new LocalVariable
+                        {
+                            name = "temp_variable_name_" + fv.GetHashCode(),
+                            type = fv.type,
+                        };
 
                         // add to dictionary
-                        tempVariable.Add(newLocalVar, fv);
+                        subVariable.AddLast(fv);
+                        tempVariable.AddLast(newLocalVar);
 
                         // substitute local variable
                         bp.headRankingFunction[j] = bp.headRankingFunction[j].Substitute(fv, new VariableExpression(newLocalVar));
@@ -465,22 +471,30 @@ namespace cminor
             bp.postcondition = new AndExpression(dictionaryDecreaseExpr, rankingFunctionGEZero);
 
             Expression wlp = wp(bp);
-            // substitute back in
 
-            foreach (KeyValuePair<LocalVariable, LocalVariable> entry in tempVariable)
+            // substitute back in
+            LinkedListNode<LocalVariable> subVar = subVariable.First;
+            LinkedListNode<LocalVariable> tempVar = tempVariable.First;
+            for (int i = 0; i < subVariable.Count; i++)
             {
-                wlp = wlp.Substitute(entry.Key, new VariableExpression(entry.Value));
+                wlp = wlp.Substitute(tempVar.Value, new VariableExpression(subVar.Value));
+                subVar = subVar.Next;
+                tempVar = tempVar.Next;
             }
 
             // precondition -> wp
 
             ImplicationExpression check = new ImplicationExpression(bp.precondition, wlp);
+            check.Print(writer);
+            writer.WriteLine("");
             CounterModel c = solver.CheckValid(check);
 
             if (c == null)
             {
                 return 1;
             }
+
+            c.Print(writer);
 
             return -1;
         }

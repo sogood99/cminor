@@ -32,6 +32,14 @@ namespace cminor
                 tailRankingFunction = new List<Expression>(basicPath.tailRankingFunction);
             }
         }
+        public void setHeadRankingFunctions(List<Expression> newRankingFunctions)
+        {
+            headRankingFunction = new List<Expression>(newRankingFunctions);
+        }
+        public void setTailRankingFunctions(List<Expression> newRankingFunctions)
+        {
+            tailRankingFunction = new List<Expression>(newRankingFunctions);
+        }
     }
 
     /// <summary> 一个验证器，接受一个中间表示，判断其是否有效。 </summary>
@@ -283,6 +291,30 @@ namespace cminor
                             return -1;
                         }
 
+                        // check ranking function
+                        if (bbp.First.Value is HeadBlock)
+                        {
+                            newBp.setHeadRankingFunctions((bbp.First.Value as HeadBlock).rankingFunctions);
+                        }
+                        newBp.setTailRankingFunctions(sFuncCall.rhs.function.preconditionBlock.rankingFunctions);
+                        for (int l = 0; l < newBp.tailRankingFunction.Count; l++)
+                        {
+                            for (int j = 0; j < argParams.Count; j++)
+                            {
+                                // substitute in argument params for function params
+                                VariableExpression arg = new VariableExpression(argParams[j]);
+                                newBp.tailRankingFunction[l] = newBp.tailRankingFunction[l].Substitute(funcParams[j], arg);
+                            }
+                            newBp.headRankingFunction[l].Print(writer);
+                            writer.WriteLine("");
+                            newBp.tailRankingFunction[l].Print(writer);
+                            writer.WriteLine("");
+                        }
+                        if (checkRankingFunction(newBp) < 0)
+                        {
+                            return -1;
+                        }
+
                         if (sFuncCall.lhs != null)
                         {
                             Expression functionPostcondition = getPostCondition(sFuncCall.rhs.function.postconditionBlock);
@@ -338,11 +370,11 @@ namespace cminor
             // check 
             if (bbp.First.Value is HeadBlock)
             {
-                bp.headRankingFunction = (bbp.First.Value as HeadBlock).rankingFunctions;
+                bp.setHeadRankingFunctions((bbp.First.Value as HeadBlock).rankingFunctions);
             }
             if (bbp.Last.Value is HeadBlock)
             {
-                bp.tailRankingFunction = (bbp.Last.Value as HeadBlock).rankingFunctions;
+                bp.setTailRankingFunctions((bbp.Last.Value as HeadBlock).rankingFunctions);
             }
 
             return checkRankingFunction(bp);
@@ -430,28 +462,33 @@ namespace cminor
                 dictionaryDecreaseExpr = new BoolConstantExpression(false);
             }
 
+            int tempVarCount = 0;
+
             for (int i = 0; i < K; i++)
             {
+                HashSet<LocalVariable> freeVariable = new HashSet<LocalVariable>(bp.headRankingFunction[i].GetFreeVariables());
+
+                foreach (LocalVariable fv in freeVariable)
+                {
+                    LocalVariable newLocalVar = new LocalVariable
+                    {
+                        name = "temp_variable_name_" + tempVarCount++,
+                        type = fv.type,
+                    };
+
+                    // add to dictionary
+                    subVariable.AddLast(fv);
+                    tempVariable.AddLast(newLocalVar);
+
+                    writer.WriteLine(fv.name);
+                    writer.WriteLine(newLocalVar.name);
+                    // substitute local variable
+                    bp.headRankingFunction[i] = bp.headRankingFunction[i].Substitute(fv, new VariableExpression(newLocalVar));
+                }
+
                 Expression allEqualAndLessThan = new BoolConstantExpression(true);
                 for (int j = 0; j <= i; j++)
                 {
-                    HashSet<LocalVariable> freeVariable = new HashSet<LocalVariable>(bp.headRankingFunction[j].GetFreeVariables());
-
-                    foreach (LocalVariable fv in freeVariable)
-                    {
-                        LocalVariable newLocalVar = new LocalVariable
-                        {
-                            name = "temp_variable_name_" + fv.GetHashCode(),
-                            type = fv.type,
-                        };
-
-                        // add to dictionary
-                        subVariable.AddLast(fv);
-                        tempVariable.AddLast(newLocalVar);
-
-                        // substitute local variable
-                        bp.headRankingFunction[j] = bp.headRankingFunction[j].Substitute(fv, new VariableExpression(newLocalVar));
-                    }
                     if (j < i)
                     {
                         allEqualAndLessThan = new AndExpression(allEqualAndLessThan, new EQExpression(bp.tailRankingFunction[j], bp.headRankingFunction[j]));
@@ -471,6 +508,10 @@ namespace cminor
             bp.postcondition = new AndExpression(dictionaryDecreaseExpr, rankingFunctionGEZero);
 
             Expression wlp = wp(bp);
+            writer.WriteLine(subVariable.Count);
+            writer.WriteLine("");
+            wlp.Print(writer);
+            writer.WriteLine("");
 
             // substitute back in
             LinkedListNode<LocalVariable> subVar = subVariable.First;

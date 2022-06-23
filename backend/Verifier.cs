@@ -165,7 +165,7 @@ namespace cminor
             if (b.conditions.Count == 0)
             {
                 // no conditions implies allow nothing
-                return new BoolConstantExpression(false);
+                return new BoolConstantExpression(true);
             }
 
             Expression phi = new BoolConstantExpression(true);
@@ -180,7 +180,7 @@ namespace cminor
             if (b.invariants.Count == 0)
             {
                 // no conditions implies allow nothing
-                return new BoolConstantExpression(false);
+                return new BoolConstantExpression(true);
             }
 
             Expression phi = new BoolConstantExpression(true);
@@ -408,6 +408,7 @@ namespace cminor
 
             // make sure that k < delta[bar{x}]
             Expression dictionaryDecreaseExpr = new BoolConstantExpression(false);
+            Expression rankingFunctionGEZero = new BoolConstantExpression(true);
 
             // bar{x} temp variables
             Dictionary<LocalVariable, LocalVariable> tempVariable = new Dictionary<LocalVariable, LocalVariable>();
@@ -422,7 +423,7 @@ namespace cminor
             for (int i = 0; i < K; i++)
             {
                 Expression allEqualAndLessThan = new BoolConstantExpression(true);
-                for (int j = 0; j < i; j++)
+                for (int j = 0; j <= i; j++)
                 {
                     HashSet<LocalVariable> freeVariable = new HashSet<LocalVariable>(bp.headRankingFunction[j].GetFreeVariables());
 
@@ -445,26 +446,26 @@ namespace cminor
                     else if (j == i)
                     {
                         allEqualAndLessThan = new AndExpression(allEqualAndLessThan, new LTExpression(bp.tailRankingFunction[i], bp.headRankingFunction[i]));
+
+                        rankingFunctionGEZero = new AndExpression(rankingFunctionGEZero, new GEExpression(bp.tailRankingFunction[i], new IntConstantExpression(0)));
                     }
                     else
                     {
                         throw new System.Exception("j > i");
                     }
-
                 }
 
                 dictionaryDecreaseExpr = new OrExpression(dictionaryDecreaseExpr, allEqualAndLessThan);
             }
-            bp.postcondition = dictionaryDecreaseExpr;
+            bp.postcondition = new AndExpression(dictionaryDecreaseExpr, rankingFunctionGEZero);
 
             Expression wlp = wp(bp);
             // substitute back in
 
             foreach (KeyValuePair<LocalVariable, LocalVariable> entry in tempVariable)
             {
-                wlp.Substitute(entry.Key, new VariableExpression(entry.Value));
+                wlp = wlp.Substitute(entry.Key, new VariableExpression(entry.Value));
             }
-
 
             // precondition -> wp
 
